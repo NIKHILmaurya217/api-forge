@@ -5,6 +5,7 @@ import {
   Cpu,
   History,
   Info,
+  CreditCard,
 } from 'lucide-react';
 
 const NAV = [
@@ -12,6 +13,7 @@ const NAV = [
   { to: '/playground', icon: <FlaskConical size={16} />, label: 'Playground' },
   { to: '/models',     icon: <Cpu size={16} />,           label: 'Models' },
   { to: '/history',    icon: <History size={16} />,        label: 'History' },
+  { to: '/billing',    icon: <CreditCard size={16} />,     label: 'Billing' },
 ];
 
 export default function Layout({ children }) {
