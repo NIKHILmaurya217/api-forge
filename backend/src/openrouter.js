@@ -33,7 +33,7 @@ async function fetchFreeModels(apiKey) {
       m.pricing &&
       (m.pricing.prompt === '0' || m.pricing.prompt === 0) &&
       (m.pricing.completion === '0' || m.pricing.completion === 0);
-    return isFreeId || isFreePrice;
+    return (isFreeId || isFreePrice) && !m.id.includes('google') && !m.id.includes('gemma');
   });
 
   return models.map(m => ({

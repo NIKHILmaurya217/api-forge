@@ -72,10 +72,7 @@ Then edit `backend/.env`:
 OPENROUTER_API_KEY=sk-or-...your key here...
 PORT=4000
 ```
-
-> **⚠ Important:** `.env` is listed in `.gitignore` and will **not** be committed. Never push your API key to GitHub. Anyone cloning the repo must create their own `.env` from `.env.example`.
-
-> **Note:** Ports 3001 and 3002 may be occupied by Docker Desktop on some machines. 4000 is the recommended default.
+> **Note:** Port 4000 is the recommended default.
 
 ### 3. Install frontend dependencies
 

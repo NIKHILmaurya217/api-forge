@@ -9,6 +9,7 @@ const cors = require('cors');
 const { classifyTask, computeComplexity, complexityLevel } = require('./src/classifier');
 const { selectModel } = require('./src/router');
 const { fetchFreeModels, chatCompletion } = require('./src/openrouter');
+const { computeCost } = require('./src/billing');
 const db = require('./src/db');
 
 const app = express();
@@ -87,8 +88,15 @@ app.post('/api/query', async (req, res) => {
     const latencyMs = Date.now() - startAt;
     const selectedModelObj = models.find(m => m.id === actualModel) || routing.selected;
 
-    // 4. Store in database
-    const id = db.insertRequest({
+    // 4. Compute cost
+    const billing = computeCost({
+      level,
+      prompt: prompt.trim(),
+      response: responseContent,
+    });
+
+    // 5. Store in database (also deducts credits atomically)
+    const { requestId, newBalance, cost } = db.insertRequest({
       prompt: prompt.trim(),
       task,
       complexity,
@@ -101,10 +109,13 @@ app.post('/api/query', async (req, res) => {
       latency_ms: latencyMs,
       is_fallback: isFallback,
       fallback_reason: fallbackReason,
+      cost: billing.total,
+      input_tokens: billing.breakdown.inputTokens,
+      output_tokens: billing.breakdown.outputTokens,
     });
 
     res.json({
-      id,
+      id: requestId,
       task,
       complexity,
       level,
@@ -124,6 +135,11 @@ app.post('/api/query', async (req, res) => {
       latency_ms: latencyMs,
       is_fallback: isFallback,
       fallback_reason: fallbackReason,
+      billing: {
+        cost: billing.total,
+        breakdown: billing.breakdown,
+        new_balance: newBalance,
+      },
     });
   } catch (err) {
     console.error('Query error:', err.message);
@@ -182,6 +198,47 @@ app.get('/api/stats', (req, res) => {
  */
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
+// ── Billing Routes ──────────────────────────────────────────────────────────
+
+/**
+ * GET /api/billing
+ * Full billing stats: wallet + breakdowns + timeline.
+ */
+app.get('/api/billing', (req, res) => {
+  res.json(db.getBillingStats());
+});
+
+/**
+ * GET /api/billing/wallet
+ * Current wallet balance only.
+ */
+app.get('/api/billing/wallet', (req, res) => {
+  res.json(db.getWallet());
+});
+
+/**
+ * GET /api/billing/transactions
+ * Paginated transaction log.
+ */
+app.get('/api/billing/transactions', (req, res) => {
+  const limit  = Math.min(parseInt(req.query.limit)  || 50, 200);
+  const offset = parseInt(req.query.offset) || 0;
+  res.json({ transactions: db.getTransactions({ limit, offset }) });
+});
+
+/**
+ * POST /api/billing/topup
+ * Add credits to the wallet (simulation).
+ */
+app.post('/api/billing/topup', (req, res) => {
+  const { amount, note } = req.body;
+  if (!amount || typeof amount !== 'number' || amount <= 0 || amount > 10000) {
+    return res.status(400).json({ error: 'amount must be a positive number ≤ 10000' });
+  }
+  const result = db.topUpWallet(amount, note || 'Manual top-up');
+  res.json(result);
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────
