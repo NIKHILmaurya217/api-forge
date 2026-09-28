@@ -1,5 +1,5 @@
-/**
- * APIforge — Database (SQLite via better-sqlite3)
+﻿/**
+ * APIforge â€” Database (SQLite via better-sqlite3)
  * Stores request history and billing data locally.
  */
 
@@ -58,7 +58,7 @@ db.exec(`
   );
 `);
 
-// Migrate existing requests table — add billing columns if they are missing
+// Migrate existing requests table â€” add billing columns if they are missing
 const _cols = db.pragma('table_info(requests)').map(c => c.name);
 if (!_cols.includes('cost'))          db.exec('ALTER TABLE requests ADD COLUMN cost          REAL    NOT NULL DEFAULT 0');
 if (!_cols.includes('input_tokens'))  db.exec('ALTER TABLE requests ADD COLUMN input_tokens  INTEGER NOT NULL DEFAULT 0');
@@ -114,7 +114,7 @@ function insertRequest(record) {
     });
     const requestId = result.lastInsertRowid;
     deductWallet.run(cost, cost);
-    const desc = `${record.task} / ${record.level} — ${record.model_name}`;
+    const desc = `${record.task} / ${record.level} â€” ${record.model_name}`;
     insertTx.run(cost, desc, requestId);
     const wallet = db.prepare('SELECT balance FROM wallet WHERE id = 1').get();
     return { requestId, newBalance: wallet.balance, cost };
@@ -252,3 +252,31 @@ module.exports = {
   insertRequest, getHistory, getRequest, getStats,
   getWallet, topUpWallet, getTransactions, getBillingStats,
 };
+
+
+
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+db.exec(
+  'CREATE TABLE IF NOT EXISTS users (' +
+  '  id            INTEGER PRIMARY KEY AUTOINCREMENT,' +
+  '  created_at    TEXT    NOT NULL DEFAULT (datetime(\'now\')),' +
+  '  username      TEXT    NOT NULL UNIQUE,' +
+  '  password_hash TEXT    NOT NULL' +
+  ');'
+);
+
+function createUser(username, passwordHash) {
+  const stmt = db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)');
+  const info = stmt.run(username, passwordHash);
+  return info.lastInsertRowid;
+}
+
+function getUserByUsername(username) {
+  return db.prepare('SELECT * FROM users WHERE username = ?').get(username) || null;
+}
+
+// Merge user functions into exports
+const _orig = module.exports;
+module.exports = Object.assign({}, _orig, { createUser, getUserByUsername });
