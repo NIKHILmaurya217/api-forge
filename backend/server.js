@@ -1,5 +1,5 @@
-/**
- * APIforge — Express Server
+﻿/**
+ * APIforge â€” Express Server
  */
 
 require('dotenv').config();
@@ -9,7 +9,10 @@ const cors = require('cors');
 const { classifyTask, computeComplexity, complexityLevel } = require('./src/classifier');
 const { selectModel } = require('./src/router');
 const { fetchFreeModels, chatCompletion } = require('./src/openrouter');
+const { computeCost } = require('./src/billing');
 const db = require('./src/db');
+const { requireAuth, handleRegister, handleLogin, handleMe } = require('./src/auth');
+const morgan = require('morgan');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -17,6 +20,27 @@ const API_KEY = process.env.OPENROUTER_API_KEY;
 
 app.use(cors());
 app.use(express.json());
+
+// ── Logging ──────────────────────────────────────────────────────────────────
+morgan.token('body-prompt', (req) => {
+  if (req.body && req.body.prompt) {
+    const p = req.body.prompt;
+    return p.length > 60 ? p.slice(0, 57) + '...' : p;
+  }
+  return '';
+});
+
+const LOG_FMT = ':method :url :status :response-time ms - :res[content-length]b :body-prompt';
+app.use(morgan(LOG_FMT, {
+  stream: {
+    write: (msg) => process.stdout.write('  │ ' + msg),
+  }
+}));
+
+// ── Auth Routes (public) ─────────────────────────────────────────────────────
+app.post('/api/auth/register', handleRegister);
+app.post('/api/auth/login',    handleLogin);
+app.get('/api/auth/me',        requireAuth, handleMe);
 
 // In-memory model cache (refreshed every 10 minutes)
 let modelCache = [];
@@ -31,13 +55,13 @@ async function getModels() {
   return modelCache;
 }
 
-// ── Routes ─────────────────────────────────────────────────────────────────
+// â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * POST /api/query
- * Main endpoint: classify → route → call → store → respond
+ * Main endpoint: classify â†’ route â†’ call â†’ store â†’ respond
  */
-app.post('/api/query', async (req, res) => {
+app.post('/api/query', requireAuth, async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
     return res.status(400).json({ error: 'prompt is required' });
@@ -67,6 +91,7 @@ app.post('/api/query', async (req, res) => {
     // 3. Try selected model, then try next best as fallback
     const toTry = routing.scored.slice(0, 3);
     let lastError = null;
+    let actualUsage = {};
 
     for (let i = 0; i < toTry.length; i++) {
       try {
@@ -87,8 +112,15 @@ app.post('/api/query', async (req, res) => {
     const latencyMs = Date.now() - startAt;
     const selectedModelObj = models.find(m => m.id === actualModel) || routing.selected;
 
-    // 4. Store in database
-    const id = db.insertRequest({
+    // 4. Compute cost
+    const billing = computeCost({
+      level,
+      prompt: prompt.trim(),
+      response: responseContent,
+    });
+
+    // 5. Store in database (also deducts credits atomically)
+    const { requestId, newBalance, cost } = db.insertRequest({
       prompt: prompt.trim(),
       task,
       complexity,
@@ -101,10 +133,13 @@ app.post('/api/query', async (req, res) => {
       latency_ms: latencyMs,
       is_fallback: isFallback,
       fallback_reason: fallbackReason,
+      cost: billing.total,
+      input_tokens: billing.breakdown.inputTokens,
+      output_tokens: billing.breakdown.outputTokens,
     });
 
     res.json({
-      id,
+      id: requestId,
       task,
       complexity,
       level,
@@ -121,9 +156,20 @@ app.post('/api/query', async (req, res) => {
       })),
       factors: routing.factors,
       response: responseContent,
+      tokens: {
+        prompt:     billing.breakdown.inputTokens,
+        completion: billing.breakdown.outputTokens,
+        total:      billing.breakdown.inputTokens + billing.breakdown.outputTokens,
+        source:     (actualUsage.prompt_tokens) ? 'real' : 'estimated',
+      },
       latency_ms: latencyMs,
       is_fallback: isFallback,
       fallback_reason: fallbackReason,
+      billing: {
+        cost: billing.total,
+        breakdown: billing.breakdown,
+        new_balance: newBalance,
+      },
     });
   } catch (err) {
     console.error('Query error:', err.message);
@@ -135,7 +181,7 @@ app.post('/api/query', async (req, res) => {
  * GET /api/models
  * Return free models list from OpenRouter (cached).
  */
-app.get('/api/models', async (req, res) => {
+app.get('/api/models', requireAuth, async (req, res) => {
   if (!API_KEY || API_KEY === 'your_openrouter_api_key_here') {
     return res.status(500).json({ error: 'OPENROUTER_API_KEY is not configured in backend/.env' });
   }
@@ -151,7 +197,7 @@ app.get('/api/models', async (req, res) => {
  * GET /api/history
  * Return paginated request history.
  */
-app.get('/api/history', (req, res) => {
+app.get('/api/history', requireAuth, (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
   const offset = parseInt(req.query.offset) || 0;
   const history = db.getHistory({ limit, offset });
@@ -162,7 +208,7 @@ app.get('/api/history', (req, res) => {
  * GET /api/history/:id
  * Return a single request record.
  */
-app.get('/api/history/:id', (req, res) => {
+app.get('/api/history/:id', requireAuth, (req, res) => {
   const record = db.getRequest(parseInt(req.params.id));
   if (!record) return res.status(404).json({ error: 'Not found' });
   res.json(record);
@@ -172,7 +218,7 @@ app.get('/api/history/:id', (req, res) => {
  * GET /api/stats
  * Return dashboard statistics.
  */
-app.get('/api/stats', (req, res) => {
+app.get('/api/stats', requireAuth, (req, res) => {
   const stats = db.getStats();
   res.json(stats);
 });
@@ -184,11 +230,57 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-// ── Start ───────────────────────────────────────────────────────────────────
+// â”€â”€ Billing Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/**
+ * GET /api/billing
+ * Full billing stats: wallet + breakdowns + timeline.
+ */
+app.get('/api/billing', requireAuth, (req, res) => {
+  res.json(db.getBillingStats());
+});
+
+/**
+ * GET /api/billing/wallet
+ * Current wallet balance only.
+ */
+app.get('/api/billing/wallet', requireAuth, (req, res) => {
+  res.json(db.getWallet());
+});
+
+/**
+ * GET /api/billing/transactions
+ * Paginated transaction log.
+ */
+app.get('/api/billing/transactions', requireAuth, (req, res) => {
+  const limit  = Math.min(parseInt(req.query.limit)  || 50, 200);
+  const offset = parseInt(req.query.offset) || 0;
+  res.json({ transactions: db.getTransactions({ limit, offset }) });
+});
+
+/**
+ * POST /api/billing/topup
+ * Add credits to the wallet (simulation).
+ */
+app.post('/api/billing/topup', requireAuth, (req, res) => {
+  const { amount, note } = req.body;
+  if (!amount || typeof amount !== 'number' || amount <= 0 || amount > 10000) {
+    return res.status(400).json({ error: 'amount must be a positive number â‰¤ 10000' });
+  }
+  const result = db.topUpWallet(amount, note || 'Manual top-up');
+  res.json(result);
+});
+
+// â”€â”€ Start â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app.listen(PORT, () => {
   console.log(`APIforge backend running on http://localhost:${PORT}`);
   if (!API_KEY || API_KEY === 'your_openrouter_api_key_here') {
-    console.warn('⚠  OPENROUTER_API_KEY is not set. Edit backend/.env before making requests.');
+    console.warn('âš   OPENROUTER_API_KEY is not set. Edit backend/.env before making requests.');
   }
 });
+
+
+
+
+
