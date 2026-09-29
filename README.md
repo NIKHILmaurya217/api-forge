@@ -56,6 +56,7 @@ api-forge/
 ```bash
 cd backend
 npm install
+npm i better-sqlite3
 ```
 
 ### 2. Configure environment
