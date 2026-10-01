@@ -1,4 +1,4 @@
-﻿/**
+/**
  * APIforge â€” Express Server
  */
 
@@ -72,8 +72,8 @@ app.post('/api/query', requireAuth, async (req, res) => {
   const startAt = Date.now();
 
   try {
-    // 1. Classify
-    const task = classifyTask(prompt);
+    // 1. Classify (ML-powered, async)
+    const task = await classifyTask(prompt);
     const complexity = computeComplexity(prompt);
     const level = complexityLevel(complexity);
 

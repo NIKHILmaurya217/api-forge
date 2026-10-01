@@ -37,3 +37,6 @@ desktop.ini
 # ── Coverage & testing ─────────────────────────────────────────
 coverage/
 .nyc_output/
+
+# ── ML model cache (Transformers.js ONNX weights) ──────────────
+backend/model-cache/
