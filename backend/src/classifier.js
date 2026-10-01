@@ -27,6 +27,22 @@ const VALID_TASKS = new Set(['CODING', 'MATH', 'WRITING', 'ANALYSIS', 'GENERAL']
 
 // ── LLM classifier ────────────────────────────────────────────────────────────
 
+// Single-turn prompt — embeds instructions in user message so reasoning
+// models don't burn all tokens on a system message before answering.
+const classifyPrompt = (prompt) =>
+  `Classify the following text into exactly ONE category. Reply with ONLY that single word.
+
+Categories:
+CODING   - programming, debugging, code, scripts, APIs, SQL
+MATH     - equations, calculations, proofs, statistics, algebra
+WRITING  - essays, articles, emails, stories, summaries, paraphrasing
+ANALYSIS - comparisons, explanations, pros/cons, reviews, evaluation
+GENERAL  - anything else
+
+Text: "${prompt.slice(0, 400)}"
+
+Category:`;
+
 const SYSTEM_PROMPT = `You are a task classifier. Given a user prompt, classify it into exactly one of these categories:
 - CODING   : programming, debugging, code generation, scripts, APIs, databases
 - MATH     : calculations, equations, proofs, statistics, geometry, algorithms
@@ -67,14 +83,12 @@ async function tryModel(prompt, apiKey, model) {
       },
       body: JSON.stringify({
         model: model,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user',   content: prompt.slice(0, 500) }, // cap at 500 chars
-        ],
-        max_tokens: 30,        // only need {"task":"CODING"}
-        temperature: 0.1,      // slight randomness prevents empty completions
+        // Single user message works better for reasoning models than system+user
+        messages: [{ role: 'user', content: classifyPrompt(prompt) }],
+        max_tokens: 200,       // reasoning models need budget for <think> step
+        temperature: 0.1,
       }),
-      timeout: 8000,
+      timeout: 10000,
     });
 
     if (!res.ok) {
@@ -87,17 +101,30 @@ async function tryModel(prompt, apiKey, model) {
     }
 
     const data = await res.json();
-    const raw = (data.choices?.[0]?.message?.content || '').trim();
+    const choice = data.choices?.[0];
 
-    // Extract the JSON — be lenient about surrounding whitespace / markdown
-    const match = raw.match(/\{[^}]*"task"\s*:\s*"([A-Z]+)"[^}]*\}/);
-    if (!match) {
-      // Empty or malformed — try next model
-      return null;
+    // Reasoning models put their answer in content after the <think> block.
+    // If content is null (token budget hit mid-think), fall back to reasoning.
+    const raw = (
+      choice?.message?.content ||
+      choice?.message?.reasoning ||
+      ''
+    ).trim().toUpperCase();
+
+    // Use the LAST valid label in the text — reasoning models conclude with
+    // the answer, so picking first risks grabbing a negation like "NOT CODING".
+    let found = null;
+    for (const label of VALID_TASKS) {
+      const idx = raw.lastIndexOf(label);
+      if (idx !== -1) {
+        if (!found || raw.lastIndexOf(label) > raw.lastIndexOf(found)) {
+          found = label;
+        }
+      }
     }
+    if (!found) return null; // malformed — try next model
 
-    const task = match[1].toUpperCase();
-    return VALID_TASKS.has(task) ? task : 'GENERAL';
+    return found;
   } catch (err) {
     // timeout or network error — try next model silently
     return null;
