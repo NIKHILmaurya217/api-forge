@@ -9,7 +9,7 @@ s = s.replace(
   "const { requireAuth, handleRegister, handleLogin, handleMe } = require('./src/auth');\nconst morgan = require('morgan');"
 );
 
-// 2. Add morgan + startup banner after app.use(express.json())
+// 2. morgan + startup banner after app.use(express.json())
 const oldMiddleware = "// ── Auth Routes (public)";
 const newMiddleware = `// ── Logging ──────────────────────────────────────────────────────────────────
 morgan.token('body-prompt', (req) => {

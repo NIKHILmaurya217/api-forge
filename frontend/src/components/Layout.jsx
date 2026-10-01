@@ -97,9 +97,9 @@ export default function Layout({ children }) {
               </button>
             </>
           )}
-          <div className="sidebar-footer" style={{ paddingTop: 10, paddingLeft: 0, paddingRight: 0 }}>
+          {/* <div className="sidebar-footer" style={{ paddingTop: 10, paddingLeft: 0, paddingRight: 0 }}>
             College Mini Project · 2025
-          </div>
+          </div> */}
         </div>
       </aside>
 

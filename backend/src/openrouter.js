@@ -1,5 +1,5 @@
 /**
- * APIforge — OpenRouter API client
+ APIforge — OpenRouter API client
  */
 
 const fetch = require('node-fetch');
@@ -16,8 +16,7 @@ function getHeaders(apiKey) {
 }
 
 /**
- * Fetch free models from OpenRouter.
- * Returns models where pricing is :free or id ends with :free.
+Fetch free models from OpenRouter.
  */
 async function fetchFreeModels(apiKey) {
   const res = await fetch(`${OPENROUTER_BASE}/models`, {
@@ -48,8 +47,7 @@ async function fetchFreeModels(apiKey) {
 }
 
 /**
- * Send a chat completion to a specific model.
- * Returns { content, usage } or throws.
+ Send a chat completion to a specific model.
  */
 async function chatCompletion(apiKey, modelId, prompt) {
   const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {

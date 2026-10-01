@@ -1,5 +1,4 @@
-﻿// Shared API utility — auto-injects JWT token
-const BASE = 'http://localhost:4000/api';
+﻿const BASE = 'http://localhost:4000/api';
 
 function getToken() {
   return localStorage.getItem('af_token');

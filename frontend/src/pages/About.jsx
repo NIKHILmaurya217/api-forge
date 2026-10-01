@@ -35,10 +35,10 @@ export default function About() {
             <li><strong>Context capacity</strong> — 30 pts. Does this model have enough context window for the prompt?</li>
             <li><strong>Complexity fit</strong> — 30 pts. Is the model large enough for the estimated complexity level?</li>
           </ul>
-          <p>
+          {/* <p>
             The model with the highest total score is selected. This is not a claim that the selected model
             is objectively the "best" — it is the model that scored highest according to APIforge's defined criteria.
-          </p>
+          </p> */}
 
           <h2>Technology Stack</h2>
           <ul>
@@ -50,9 +50,6 @@ export default function About() {
           </ul>
 
           <h2>Limitations</h2>
-          <p>
-            This is a student project with intentional scope limitations:
-          </p>
           <ul>
             <li>Task classification uses keyword heuristics, not a learned classifier.</li>
             <li>Complexity estimation is rule-based, not empirically calibrated.</li>

@@ -220,7 +220,7 @@ export default function AuthPage() {
         </div>
 
         <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 20 }}>
-          ABESIT Mini Project · 2025
+          ABESIT Mini Project · 2026
         </p>
       </div>
 

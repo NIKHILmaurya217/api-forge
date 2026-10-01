@@ -21,8 +21,7 @@ const TASK_AFFINITIES = {
 };
 
 /**
- * Score a model against task/complexity criteria.
- * Returns a score object with breakdown.
+ Score a model against task/complexity criteria.
  *
  * @param {object} model  - { id, name, context_length }
  * @param {string} task   - classified task type
@@ -46,7 +45,6 @@ function scoreModel(model, task, complexity) {
   else contextScore = 5;
 
   // 3. Complexity fit (0–30 pts)
-  // High complexity needs large context. Penalise small models for hard prompts.
   let complexityScore = 0;
   if (complexity >= 67) {
     // HIGH — need at least 32k

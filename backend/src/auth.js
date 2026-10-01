@@ -1,6 +1,5 @@
 ﻿/**
  * APIforge - Authentication Module
- * Handles user registration, login, and JWT verification.
  */
 const jwt       = require('jsonwebtoken');
 const bcrypt    = require('bcryptjs');
